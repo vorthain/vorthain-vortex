@@ -43,7 +43,10 @@
     "isomorphic"
   ],
   "files": [
-    "src/",
+    "src/vortex.js",
+    "src/requestBuilder.js",
+    "src/error.js",
+    "src/cache.js",
     "index.js",
     "README.md",
     "LICENSE"
