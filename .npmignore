@@ -1,0 +1,64 @@
+# Test files
+*.test.js
+**/*.test.js
+src/tests/
+__tests__/
+
+# Jest configuration
+jest.config.cjs
+jest.setup.cjs
+babel.config.cjs
+
+# Development files
+.gitignore
+.editorconfig
+.eslintrc
+.prettierrc
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependencies
+node_modules/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Build files that might exist
+dist/
+build/
+*.tsbuildinfo
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Example files
+examples/
+example/
