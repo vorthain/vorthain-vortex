@@ -1,6 +1,6 @@
 {
   "name": "@vorthain/vortex",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A modern, highly-configurable API client designed for DX. Works in both browser and Node.js environments.",
   "main": "index.js",
   "type": "module",
