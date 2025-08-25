@@ -1,6 +1,6 @@
 # 🌀 @vorthain/vortex
 
-[![npm version](https://badge.fury.io/js/@vorthain/vortex.svg)](https://www.npmjs.com/package/@vorthain/vortex)
+[![npm](https://img.shields.io/npm/v/@vorthain/vortex.svg)](https://www.npmjs.com/package/@vorthain/vortex)
 [![Downloads](https://img.shields.io/npm/dm/@vorthain/vortex.svg)](https://www.npmjs.com/package/@vorthain/vortex)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/@vorthain/vortex)](https://bundlephobia.com/package/@vorthain/vortex)
 
