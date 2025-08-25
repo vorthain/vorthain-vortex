@@ -11,6 +11,9 @@
     "type": "git",
     "url": "https://github.com/vorthain/vorthain-vortex.git"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "vortex",
     "vorthain",
