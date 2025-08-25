@@ -1,6 +1,15 @@
 import { VortexError } from './error.js';
 
 /**
+ * @typedef {Object} ProgressEvent
+ * @property {number} loaded - Bytes loaded
+ * @property {number} total - Total bytes
+ * @property {boolean} lengthComputable - Whether total is known
+ * @property {number} progress - Progress as decimal (0-1)
+ * @property {string} type - Event type
+ */
+
+/**
  * @typedef {Object} RequestSettings
  * @property {number} [timeout] - Request timeout in milliseconds
  * @property {number} [maxRetries=10] - Maximum number of retries allowed in interceptors
@@ -163,22 +172,22 @@ export class RequestBuilder {
    * @param {import('./vortex.js').Vortex} params.clientInstance - The parent Vortex client instance
    */
   constructor({ httpMethod, endpointConfig, clientInstance }) {
-    /** @private */
+    /** @private @type {string} */
     this.httpMethod = httpMethod.toUpperCase();
 
-    /** @private */
+    /** @private @type {Object} */
     this.endpointConfig = endpointConfig || {};
 
-    /** @private */
+    /** @private @type {Object} */
     this.methodConfig = endpointConfig?.methods?.[httpMethod.toLowerCase()] || {};
 
-    /** @private */
+    /** @private @type {Object} */
     this.clientConfig = clientInstance.config || {};
 
-    /** @private */
+    /** @private @type {import('./vortex.js').Vortex} */
     this.clientInstance = clientInstance;
 
-    /** @private */
+    /** @private @type {RequestConfig} */
     this.requestConfig = {
       pathParams: {},
       searchParams: {},
@@ -186,7 +195,7 @@ export class RequestBuilder {
       settings: {}, // Always initialize as empty object
     };
 
-    /** @private */
+    /** @private @type {AbortController} */
     this.abortController = new AbortController();
 
     // Initialize cleanup on first RequestBuilder creation
@@ -197,7 +206,7 @@ export class RequestBuilder {
    * Sets path parameters for URL substitution.
    *
    * @param {Record<string, string | number>} params - Key-value pairs for path substitution
-   * @returns {RequestBuilder} The RequestBuilder instance for chaining
+   * @returns {RequestBuilder} This RequestBuilder instance for method chaining
    *
    * @example
    * // Replace :id in /users/:id with 123
@@ -227,7 +236,7 @@ export class RequestBuilder {
    * Sets URL search parameters (query string).
    *
    * @param {Record<string, string | number | boolean>} params - Key-value pairs for query parameters
-   * @returns {RequestBuilder} The RequestBuilder instance for chaining
+   * @returns {RequestBuilder} This RequestBuilder instance for method chaining
    *
    * @example
    * // Add query parameters
@@ -257,7 +266,7 @@ export class RequestBuilder {
    * Sets the request body data.
    *
    * @param {any} data - The request body data
-   * @returns {RequestBuilder} The RequestBuilder instance for chaining
+   * @returns {RequestBuilder} This RequestBuilder instance for method chaining
    *
    * @example
    * // JSON body (automatically stringified)
@@ -284,7 +293,7 @@ export class RequestBuilder {
    * Sets additional request settings.
    *
    * @param {RequestSettings} settings - Request configuration settings
-   * @returns {RequestBuilder} The RequestBuilder instance for chaining
+   * @returns {RequestBuilder} This RequestBuilder instance for method chaining
    *
    * @example
    * // Set custom timeout and headers

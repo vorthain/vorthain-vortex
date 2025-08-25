@@ -7,15 +7,17 @@
 **Configuration-first HTTP client with developer experience in mind**
 
 ```javascript
+// Configure your entire API surface
 const client = createVortexClient({
   baseURL: 'https://api.example.com',
   endpoints: {
     users: { path: '/users' },
     user: { path: '/users/:id' },
+    posts: { path: '/posts' },
   },
 });
 
-// Full autocomplete in both JavaScript and TypeScript
+// Clean, predictable API
 const users = await client.get('users').send();
 const user = await client.get('user').pathParams({ id: 123 }).send();
 ```
@@ -26,306 +28,105 @@ const user = await client.get('user').pathParams({ id: 123 }).send();
 npm install @vorthain/vortex
 ```
 
-## Quick Start
+## Why Vortex?
+
+Traditional HTTP clients make you repeat yourself constantly - auth headers, error handling, retry logic, response transformation. You write the same patterns in every project, in every file, sometimes in every request.
+
+Vortex flips this: configure your patterns once, use them everywhere.
 
 ```javascript
-import { createVortexClient } from '@vorthain/vortex';
-
-const client = createVortexClient({
+// Define once
+const api = createVortexClient({
   baseURL: 'https://api.example.com',
+  timeout: 5000,
+
+  // Auto-attach auth to every request
+  requestInterceptor: async (config) => {
+    config.headers.Authorization = `Bearer ${await getToken()}`;
+    return config;
+  },
+
+  // Handle token refresh automatically
+  errorInterceptor: async (error, config, retry) => {
+    if (error.status === 401 && !config._tokenRefreshed) {
+      const newToken = await refreshToken();
+      return retry({
+        headers: { Authorization: `Bearer ${newToken}` },
+        _tokenRefreshed: true,
+      });
+    }
+    throw error;
+  },
+
   endpoints: {
+    users: { path: '/users' },
+    user: { path: '/users/:id' },
     posts: { path: '/posts' },
-    post: { path: '/posts/:id' },
-    comments: { path: '/posts/:postId/comments' },
   },
 });
 
-// GET request
-const posts = await client.get('posts').send();
-
-// GET with path parameters
-const post = await client.get('post').pathParams({ id: 123 }).send();
-
-// GET with query parameters
-const comments = await client.get('comments').pathParams({ postId: 123 }).search({ limit: 10, sort: 'newest' }).send();
-
-// POST with body
-const newPost = await client.post('posts').body({ title: 'Hello', content: 'World' }).send();
+// Use everywhere - auth, retries, errors all handled
+const user = await api.get('user').pathParams({ id: 123 }).send();
 ```
 
-## Core Concepts
+## Core Features
 
 ### Configuration Hierarchy
 
 Settings cascade from global → endpoint → method → request level:
 
 ```javascript
-const client = createVortexClient({
-  // Global config
-  baseURL: 'https://api.example.com',
-  timeout: 30000,
-  headers: { 'X-API-Version': '1.0' },
+const api = createVortexClient({
+  timeout: 30000, // Global default
 
   endpoints: {
     users: {
-      // Endpoint config (overrides global)
       path: '/users',
-      timeout: 10000,
+      timeout: 10000, // Override for all /users requests
 
       methods: {
-        // Method config (overrides endpoint)
         get: {
-          cache: { enabled: true, ttl: 60000 },
+          cache: { enabled: true }, // Only GET /users cached
         },
         post: {
-          timeout: 5000,
+          timeout: 5000, // POST /users has 5s timeout
         },
       },
     },
   },
 });
 
-// Request config (overrides everything)
-await client.get('users').settings({ timeout: 2000 }).send();
+// Request-level override (highest priority)
+await api.get('users').settings({ timeout: 2000 }).send();
 ```
 
-## HTTP Methods
+### Interceptors
 
-### GET Requests
-
-```javascript
-// Simple GET
-const users = await client.get('users').send();
-
-// With path parameters
-const user = await client.get('user').pathParams({ id: 123 }).send();
-
-// With query parameters
-const filtered = await client.get('users').search({ role: 'admin', active: true }).send();
-
-// Using promises
-client
-  .get('users')
-  .send()
-  .then((users) => console.log(users))
-  .catch((error) => console.error(error))
-  .finally(() => console.log('Done'));
-
-// Using try-catch
-try {
-  const users = await client.get('users').send();
-  console.log(users);
-} catch (error) {
-  if (error.status === 404) {
-    console.log('Not found');
-  }
-}
-```
-
-### POST Requests
+Interceptors let you modify requests/responses or handle errors globally:
 
 ```javascript
-// JSON body
-const user = await client.post('users').body({ name: 'John', email: 'john@example.com' }).send();
-
-// FormData for file uploads
-const formData = new FormData();
-formData.append('file', fileInput.files[0]);
-formData.append('description', 'Avatar');
-
-const upload = await client.post('upload').body(formData).send();
-
-// URLSearchParams
-const params = new URLSearchParams();
-params.append('username', 'john');
-params.append('password', 'secret');
-
-const token = await client.post('login').body(params).send();
-```
-
-### PUT, PATCH, DELETE
-
-```javascript
-// PUT - full update
-const updated = await client
-  .put('user')
-  .pathParams({ id: 123 })
-  .body({ name: 'Jane', email: 'jane@example.com' })
-  .send();
-
-// PATCH - partial update
-const patched = await client.patch('user').pathParams({ id: 123 }).body({ email: 'newemail@example.com' }).send();
-
-// DELETE
-await client.delete('user').pathParams({ id: 123 }).send();
-
-// Custom methods (HEAD, OPTIONS, etc.)
-await client.request('HEAD', 'user').pathParams({ id: 123 }).send();
-```
-
-## Request Building
-
-### Path Parameters
-
-```javascript
-const client = createVortexClient({
-  baseURL: 'https://api.example.com',
-  endpoints: {
-    user: { path: '/users/:id' },
-    post: { path: '/users/:userId/posts/:postId' },
-    file: { path: '/projects/:projectId/folders/:folderId/files/:fileId' },
-  },
-});
-
-// Single parameter
-await client.get('user').pathParams({ id: 123 }).send();
-// → GET /users/123
-
-// Multiple parameters
-await client.get('post').pathParams({ userId: 1, postId: 2 }).send();
-// → GET /users/1/posts/2
-
-// Special characters are encoded
-await client.get('user').pathParams({ id: 'user@example.com' }).send();
-// → GET /users/user%40example.com
-```
-
-### Query Parameters
-
-```javascript
-// Basic query
-await client.get('users').search({ page: 1, limit: 20 }).send();
-// → GET /users?page=1&limit=20
-
-// Null and undefined are ignored
-await client
-  .get('users')
-  .search({
-    name: 'John',
-    age: null, // ignored
-    city: undefined, // ignored
-  })
-  .send();
-// → GET /users?name=John
-```
-
-### Request Settings
-
-```javascript
-await client
-  .post('users')
-  .body({ name: 'John' })
-  .settings({
-    timeout: 5000,
-    headers: { 'X-Priority': 'high' },
-    responseType: 'json',
-    validateStatus: (status) => status < 400,
-    onUploadProgress: (progress) => {
-      console.log(`${Math.round(progress.progress * 100)}%`);
-    },
-    onDownloadProgress: (progress) => {
-      console.log(`${Math.round(progress.progress * 100)}%`);
-    },
-  })
-  .send();
-```
-
-## Error Handling
-
-### VortexError
-
-Every error is a `VortexError` with detailed context:
-
-```javascript
-try {
-  await client.get('user').pathParams({ id: 999 }).send();
-} catch (error) {
-  console.log(error.type); // 'HTTP_ERROR'
-  console.log(error.status); // 404
-  console.log(error.message); // 'HTTP 404: Not Found'
-  console.log(error.responseBody); // Server's error response
-  console.log(error.requestConfig); // Request configuration
-
-  // Helper methods
-  if (error.isType(VortexError.TYPES.HTTP)) {
-    console.log('HTTP error');
-  }
-
-  if (error.hasStatus(404)) {
-    console.log('Not found');
-  }
-
-  if (error.isClientError()) {
-    console.log('4xx error');
-  }
-
-  if (error.isServerError()) {
-    console.log('5xx error');
-  }
-}
-```
-
-### Error Types
-
-```javascript
-VortexError.TYPES = {
-  HTTP: 'HTTP_ERROR', // 4xx, 5xx responses
-  NETWORK: 'NETWORK_ERROR', // Connection failures
-  TIMEOUT: 'TIMEOUT_ERROR', // Request timeouts
-  ABORT: 'ABORT_ERROR', // Cancelled requests
-  PARSE: 'PARSE_ERROR', // Response parsing failures
-  VALIDATION: 'VALIDATION_ERROR', // Invalid request config
-  CONFIG: 'CONFIG_ERROR', // Configuration errors
-  CACHE: 'CACHE_ERROR', // Cache operation failures
-};
-```
-
-## Interceptors
-
-### Request Interceptor
-
-Modify requests before they're sent:
-
-```javascript
-const client = createVortexClient({
+const api = createVortexClient({
   baseURL: 'https://api.example.com',
 
+  // Modify all requests before sending
   requestInterceptor: async (config) => {
-    // Add auth token
-    const token = await getAuthToken();
-    config.headers['Authorization'] = `Bearer ${token}`;
-
-    // Add request ID
+    // config has: url, method, headers, body, timeout, responseType, pathParams, searchParams
+    config.headers.Authorization = `Bearer ${await getToken()}`;
     config.headers['X-Request-ID'] = generateUUID();
 
-    // Add timestamp to body
-    if (config.body && config.method === 'POST') {
-      config.body = {
-        ...config.body,
-        timestamp: Date.now(),
-      };
-    }
+    // Add timestamp for response interceptor to use
+    config._startTime = Date.now();
 
+    // Must return the config
     return config;
   },
 
-  endpoints: {
-    users: { path: '/users' },
-  },
-});
-```
-
-### Response Interceptor
-
-Transform responses:
-
-```javascript
-const client = createVortexClient({
-  baseURL: 'https://api.example.com',
-
+  // Modify all responses after receiving
   responseInterceptor: async (response, config) => {
-    // Log response time
-    console.log(`Request took ${Date.now() - config._startTime}ms`);
+    // Log response time using timestamp from requestInterceptor
+    if (config._startTime) {
+      console.log(`Request to ${config.url} took ${Date.now() - config._startTime}ms`);
+    }
 
     // Check for deprecation warnings
     const warning = response.headers.get('X-Deprecation-Warning');
@@ -333,70 +134,31 @@ const client = createVortexClient({
       console.warn(`API Deprecation: ${warning}`);
     }
 
+    // Must return the response
     return response;
   },
 
-  endpoints: {
-    users: { path: '/users' },
-  },
-});
-```
-
-### Error Interceptor with Retry
-
-Handle errors and retry failed requests:
-
-```javascript
-const client = createVortexClient({
-  baseURL: 'https://api.example.com',
-  maxRetries: 3,
-
+  // Handle all errors with retry capability
   errorInterceptor: async (error, config, retry) => {
     // Token refresh on 401
     if (error.status === 401 && !config._tokenRefreshed) {
-      try {
-        const newToken = await refreshAuthToken();
-
-        // Retry with new token
-        return await retry({
-          headers: { Authorization: `Bearer ${newToken}` },
-          _tokenRefreshed: true,
-        });
-      } catch (refreshError) {
-        // Refresh failed, logout user
-        await logout();
-        throw error;
-      }
+      const newToken = await refreshAuthToken();
+      return retry({
+        headers: { Authorization: `Bearer ${newToken}` },
+        _tokenRefreshed: true,
+      });
     }
 
-    // Retry on 503 with delay
+    // Retry on 503 with delay from response headers
     if (error.status === 503) {
-      const retryAfter = error.response?.headers?.get('Retry-After');
+      // Server can send Retry-After header which we capture in metadata
+      const retryAfter = error.metadata?.headers?.['retry-after'];
       const delay = retryAfter ? parseInt(retryAfter) * 1000 : 5000;
-
       await new Promise((resolve) => setTimeout(resolve, delay));
 
       const result = await retry();
       if (result !== undefined) {
         return result;
-      }
-    }
-
-    // Exponential backoff for server errors
-    if (error.isServerError()) {
-      const attempt = config._retryAttempt || 0;
-
-      if (attempt < 3) {
-        const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-
-        const result = await retry({
-          _retryAttempt: attempt + 1,
-        });
-
-        if (result !== undefined) {
-          return result;
-        }
       }
     }
 
@@ -409,86 +171,69 @@ const client = createVortexClient({
 });
 ```
 
-## Response & Error Mappers
-
-Transform data at any configuration level:
+### Smart Retry with Interceptors
 
 ```javascript
-const client = createVortexClient({
+const api = createVortexClient({
   baseURL: 'https://api.example.com',
+  maxRetries: 3, // Built-in retry limit (applies to all retry() calls)
 
-  // Global mapper - applies to all responses
-  responseMapper: (data) => {
-    console.log('Transforming response');
-    return data;
-  },
-
-  // Global error mapper
-  errorMapper: (error) => {
-    if (error.status === 404) {
-      error.userMessage = 'Item not found';
+  errorInterceptor: async (error, config, retry) => {
+    // Token refresh
+    if (error.status === 401 && !config._tokenRefreshed) {
+      const newToken = await refreshAuthToken();
+      return retry({
+        headers: { Authorization: `Bearer ${newToken}` },
+        _tokenRefreshed: true,
+      });
     }
-    return error;
+
+    // Exponential backoff for server errors
+    if (error.status >= 500) {
+      const attempt = config._retryCount || 0;
+      const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
+      const result = await retry();
+      // retry() returns undefined when maxRetries is reached
+      if (result !== undefined) {
+        return result;
+      }
+    }
+
+    throw error;
   },
 
   endpoints: {
-    users: {
-      path: '/users',
-
-      // Endpoint-level mapper
-      responseMapper: (data) => {
-        return Array.isArray(data) ? data : data.users || [];
-      },
-
-      methods: {
-        get: {
-          // Method-level mapper
-          responseMapper: (users) => {
-            return users.filter((u) => u.active);
-          },
-        },
-
-        post: {
-          // Don't inherit parent mappers
-          inheritMappers: false,
-          responseMapper: (response) => {
-            return { id: response.id, success: true };
-          },
-        },
-      },
-    },
+    users: { path: '/users' },
   },
 });
-
-// Request-level mapper
-const users = await client
-  .get('users')
-  .settings({
-    responseMapper: (users) => users.slice(0, 10),
-  })
-  .send();
 ```
 
-## Caching
+### Caching
 
-### Simple Cache
-
-Time-based caching:
+Vortex includes a built-in in-memory cache with TTL support:
 
 ```javascript
-const client = createVortexClient({
+const api = createVortexClient({
   baseURL: 'https://api.example.com',
+
+  // Enable simple caching globally
   cache: {
     enabled: true,
-    ttl: 60000, // 1 minute
-    strategy: 'simple',
+    ttl: 60000, // Cache for 1 minute
+    strategy: 'simple', // Standard cache
   },
+
   endpoints: {
     users: {
       path: '/users',
       methods: {
         get: {
-          cache: { enabled: true, ttl: 300000 }, // 5 minutes
+          cache: {
+            enabled: true,
+            ttl: 300000, // Override: cache users for 5 minutes
+          },
         },
       },
     },
@@ -496,45 +241,42 @@ const client = createVortexClient({
 });
 
 // First call hits server
-const users1 = await client.get('users').send();
+const users1 = await api.get('users').send();
 
-// Second call returns cached data
-const users2 = await client.get('users').send();
+// Second call returns from cache (within TTL)
+const users2 = await api.get('users').send();
 
 // Force fresh data
-const fresh = await client
+const fresh = await api
   .get('users')
   .settings({ cache: { enabled: false } })
   .send();
 
-// Clear cache
-await client.clearCache();
+// Clear all cache
+await api.clearCache();
 ```
 
-### Stale-While-Revalidate
+#### Stale-While-Revalidate (SWR)
 
-Return cached data immediately while fetching fresh data:
+SWR returns cached data immediately while fetching fresh data in the background:
 
 ```javascript
-const client = createVortexClient({
+const api = createVortexClient({
   baseURL: 'https://api.example.com',
+
   cache: {
     enabled: true,
-    strategy: 'swr',
+    strategy: 'swr', // Return stale, revalidate in background
     ttl: 30000,
   },
+
   endpoints: {
     dashboard: {
       path: '/dashboard',
       methods: {
         get: {
-          cache: {
-            enabled: true,
-            strategy: 'swr',
-          },
           onRevalidate: (freshData) => {
             // Called when fresh data arrives
-            console.log('Fresh data:', freshData);
             updateUI(freshData);
           },
         },
@@ -543,73 +285,259 @@ const client = createVortexClient({
   },
 });
 
-// Returns stale data immediately, fetches fresh in background
-const data = await client.get('dashboard').send();
+// Instant response from cache, fresh data incoming
+const data = await api.get('dashboard').send();
 ```
 
-## Advanced Features
+#### Custom Cache Implementation
 
-### Request Cancellation
+You can provide your own cache implementation:
 
 ```javascript
-// Cancel a single request
-const request = client.get('large-dataset');
+class RedisCache {
+  async get(key) {
+    /* ... */
+  }
+  async set(key, value, ttl) {
+    /* ... */
+  }
+  async delete(key) {
+    /* ... */
+  }
+  async has(key) {
+    /* ... */
+  }
+  async clear() {
+    /* ... */
+  }
+}
+
+const api = createVortexClient({
+  cache: {
+    enabled: true,
+    instance: new RedisCache(),
+    ttl: 60000,
+  },
+  // ... rest of config
+});
+```
+
+### Request Building
+
+```javascript
+// Path parameters
+await api.get('user').pathParams({ id: 123 }).send();
+// → GET /users/123
+
+// Query parameters
+await api.get('users').search({ role: 'admin', active: true }).send();
+// → GET /users?role=admin&active=true
+
+// Request body
+await api.post('users').body({ name: 'John', email: 'john@example.com' }).send();
+
+// Custom settings
+await api
+  .get('users')
+  .settings({
+    timeout: 5000,
+    headers: { 'X-Priority': 'high' },
+    onSuccess: (data) => console.log('Got users:', data),
+    onError: (error) => console.error('Failed:', error),
+  })
+  .send();
+
+// Cancel request
+const request = api.get('large-dataset');
 const promise = request.send();
 
-setTimeout(() => {
-  request.cancel('Taking too long');
-}, 2000);
+setTimeout(() => request.cancel('Taking too long'), 5000);
+```
 
+### Response Handling
+
+You can handle responses in multiple ways:
+
+```javascript
+// 1. Async/await with try-catch
 try {
-  const data = await promise;
+  const users = await api.get('users').send();
+  console.log('Success:', users);
 } catch (error) {
-  if (error.type === VortexError.TYPES.ABORT) {
-    console.log('Request cancelled');
+  if (error.hasStatus(404)) {
+    console.log('Not found');
+  } else {
+    console.error('Error:', error.message);
   }
+}
+
+// 2. Promise chains
+api
+  .get('users')
+  .send()
+  .then((users) => {
+    console.log('Success:', users);
+    return users.filter((u) => u.active);
+  })
+  .then((activeUsers) => {
+    console.log('Active users:', activeUsers);
+  })
+  .catch((error) => {
+    console.error('Failed:', error);
+  })
+  .finally(() => {
+    console.log('Request completed');
+  });
+
+// 3. Callbacks in settings
+await api
+  .get('users')
+  .settings({
+    onStart: () => {
+      console.log('Request starting...');
+      showLoader();
+    },
+    onSuccess: (users) => {
+      console.log('Got users:', users);
+      updateUI(users);
+    },
+    onError: (error) => {
+      console.error('Failed:', error);
+      showErrorMessage(error.message);
+    },
+    onFinally: () => {
+      console.log('Request done');
+      hideLoader();
+    },
+  })
+  .send();
+
+// 4. Mix approaches - callbacks for side effects, promise for main flow
+try {
+  const users = await api
+    .get('users')
+    .settings({
+      onStart: () => showLoader(),
+      onFinally: () => hideLoader(),
+    })
+    .send();
+
+  // Main business logic here
+  processUsers(users);
+} catch (error) {
+  handleError(error);
 }
 ```
 
-### Progress Tracking
+### Progress Tracking (Browser only)
 
 ```javascript
-// Upload progress
-await client
+await api
   .post('upload')
   .body(formData)
   .settings({
     onUploadProgress: (progress) => {
-      const percent = Math.round(progress.progress * 100);
-      console.log(`Upload: ${percent}%`);
-      progressBar.value = percent;
+      console.log(`Upload: ${Math.round(progress.progress * 100)}%`);
     },
-  })
-  .send();
-
-// Download progress
-await client
-  .get('download')
-  .settings({
-    responseType: 'blob',
     onDownloadProgress: (progress) => {
-      const percent = Math.round(progress.progress * 100);
-      console.log(`Download: ${percent}%`);
+      console.log(`Download: ${Math.round(progress.progress * 100)}%`);
     },
   })
   .send();
 ```
 
+### Response & Error Transformation
+
+Transform data at any level of the configuration hierarchy:
+
+```javascript
+const api = createVortexClient({
+  baseURL: 'https://api.example.com',
+
+  // Transform all successful responses
+  responseMapper: (data) => ({
+    ...data,
+    _retrieved: Date.now(),
+  }),
+
+  // Transform all errors
+  errorMapper: (error) => {
+    // Log errors to monitoring service
+    logToSentry(error);
+    return error;
+  },
+
+  endpoints: {
+    users: {
+      path: '/users',
+
+      // Override for this endpoint
+      responseMapper: (data) => data.users || data,
+
+      methods: {
+        post: {
+          // Don't inherit mappers from parent levels
+          inheritMappers: false,
+
+          // Custom mapper just for POST /users
+          responseMapper: (response) => ({
+            success: true,
+            user: response,
+          }),
+        },
+      },
+    },
+  },
+});
+```
+
+### Error Handling
+
+Every error is a `VortexError` with rich context:
+
+```javascript
+try {
+  await api.get('user').pathParams({ id: 999 }).send();
+} catch (error) {
+  console.log(error.type); // 'HTTP_ERROR'
+  console.log(error.status); // 404
+  console.log(error.responseBody); // Server's error response
+  console.log(error.requestConfig); // Full request configuration
+
+  // Utility methods
+  if (error.isType(VortexError.TYPES.HTTP)) {
+    /* ... */
+  }
+  if (error.hasStatus(404)) {
+    /* ... */
+  }
+  if (error.isClientError()) {
+    /* 4xx */
+  }
+  if (error.isServerError()) {
+    /* 5xx */
+  }
+}
+```
+
+Error types:
+
+- `HTTP_ERROR` - 4xx/5xx responses
+- `NETWORK_ERROR` - Connection failures
+- `TIMEOUT_ERROR` - Request timeout
+- `ABORT_ERROR` - Cancelled requests
+- `PARSE_ERROR` - Response parsing failures
+- `VALIDATION_ERROR` - Invalid configuration
+- `CONFIG_ERROR` - Setup errors
+
 ### Parallel Requests
 
 ```javascript
-// Parallel with Promise.all
-const [users, posts] = await Promise.all([client.get('users').send(), client.get('posts').send()]);
+// Wait for all
+const [users, posts] = await Promise.all([api.get('users').send(), api.get('posts').send()]);
 
-// Parallel with error handling
-const results = await Promise.allSettled([
-  client.get('users').send(),
-  client.get('posts').send(),
-  client.get('comments').send(),
-]);
+// Handle failures individually
+const results = await Promise.allSettled([api.get('users').send(), api.get('posts').send()]);
 
 results.forEach((result, index) => {
   if (result.status === 'fulfilled') {
@@ -620,243 +548,32 @@ results.forEach((result, index) => {
 });
 ```
 
-### Custom Validation
-
-```javascript
-const client = createVortexClient({
-  baseURL: 'https://api.example.com',
-
-  // Default validation
-  validateStatus: (status) => status >= 200 && status < 300,
-
-  endpoints: {
-    flexible: {
-      path: '/flexible',
-      // Accept more status codes
-      validateStatus: (status) => status < 500,
-    },
-  },
-});
-
-// Request-level validation
-await client
-  .get('api')
-  .settings({
-    validateStatus: (status) => {
-      // Accept 304 Not Modified
-      return status === 304 || (status >= 200 && status < 300);
-    },
-  })
-  .send();
-```
-
-### Response Types
-
-```javascript
-// JSON (default)
-const json = await client.get('data').send();
-
-// Text
-const html = await client.get('page').settings({ responseType: 'text' }).send();
-
-// Blob
-const image = await client.get('image').settings({ responseType: 'blob' }).send();
-
-// ArrayBuffer
-const buffer = await client.get('binary').settings({ responseType: 'arrayBuffer' }).send();
-
-// FormData
-const form = await client.get('form').settings({ responseType: 'formData' }).send();
-```
-
 ## API Reference
 
 ### `createVortexClient(config)`
 
-Creates a new Vortex client.
+Creates a new client instance.
 
 ### `client.get/post/put/patch/delete(endpoint)`
 
-Create a request builder for the endpoint.
+Create a request builder for the specified endpoint.
 
 ### `client.request(method, endpoint)`
 
 Create a request with custom HTTP method.
 
-### `RequestBuilder.pathParams(params)`
+### Request Builder Methods
 
-Set path parameters.
+- `.pathParams(params)` - Replace path parameters
+- `.search(params)` - Add query parameters
+- `.body(data)` - Set request body
+- `.settings(config)` - Override request settings
+- `.cancel(message?)` - Cancel the request
+- `.send()` - Execute and return promise
 
-### `RequestBuilder.search(params)`
+### Utility Methods
 
-Set query parameters.
-
-### `RequestBuilder.body(data)`
-
-Set request body.
-
-### `RequestBuilder.settings(settings)`
-
-Override request settings.
-
-### `RequestBuilder.cancel(message?)`
-
-Cancel the request.
-
-### `RequestBuilder.send()`
-
-Execute the request.
-
-### `client.withConfig(config)`
-
-Create new client with merged config.
-
-### `client.clearCache()`
-
-Clear all cached responses.
-
-### `client.getCacheStats()`
-
-Get cache statistics.
-
-### `client.destroy()`
-
-Clean up resources.
-
-## Complete Example
-
-```javascript
-import { createVortexClient, VortexError } from '@vorthain/vortex';
-
-// Centralized endpoint names
-const API_ENDPOINTS = {
-  USERS: 'users',
-  USER: 'user',
-  POSTS: 'posts',
-  UPLOAD: 'upload',
-};
-
-const api = createVortexClient({
-  baseURL: 'https://api.example.com',
-  timeout: 30000,
-
-  requestInterceptor: async (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-
-  errorInterceptor: async (error, config, retry) => {
-    if (error.status === 401) {
-      const newToken = await refreshToken();
-      localStorage.setItem('token', newToken);
-
-      return await retry({
-        headers: { Authorization: `Bearer ${newToken}` },
-      });
-    }
-
-    if (error.isServerError() && config._attempt < 3) {
-      await new Promise((r) => setTimeout(r, 1000));
-      return await retry({ _attempt: (config._attempt || 0) + 1 });
-    }
-
-    throw error;
-  },
-
-  cache: {
-    enabled: true,
-    strategy: 'swr',
-    ttl: 60000,
-  },
-
-  endpoints: {
-    [API_ENDPOINTS.USERS]: {
-      path: '/users',
-      methods: {
-        get: { cache: { ttl: 300000 } },
-      },
-    },
-    [API_ENDPOINTS.USER]: { path: '/users/:id' },
-    [API_ENDPOINTS.POSTS]: { path: '/posts' },
-    [API_ENDPOINTS.UPLOAD]: {
-      path: '/upload',
-      methods: {
-        post: { timeout: 120000 },
-      },
-    },
-  },
-});
-
-// Use it
-async function getUser(id) {
-  try {
-    return await api.get(API_ENDPOINTS.USER).pathParams({ id }).send();
-  } catch (error) {
-    if (error.hasStatus(404)) {
-      console.log('User not found');
-      return null;
-    }
-    console.error('Error fetching user:', error.message);
-    return null;
-  }
-}
-
-async function createPost(data) {
-  return await api
-    .post(API_ENDPOINTS.POSTS)
-    .body(data)
-    .settings({
-      onStart: () => {
-        console.log('Creating post...');
-        showLoader();
-      },
-      onSuccess: (post) => {
-        console.log('Post created successfully:', post);
-        showSuccessNotification('Post created!');
-      },
-      onError: (error) => {
-        console.error('Failed to create post:', error.message);
-        showErrorNotification(error.message);
-      },
-      onFinally: () => {
-        console.log('Create post request completed');
-        hideLoader();
-      },
-    })
-    .send();
-}
-
-async function uploadFile(file) {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  return await api
-    .post(API_ENDPOINTS.UPLOAD)
-    .body(formData)
-    .settings({
-      onStart: () => {
-        console.log('Upload started');
-        showUploadModal();
-      },
-      onUploadProgress: (progress) => {
-        const percent = Math.round(progress.progress * 100);
-        updateProgressBar(percent);
-      },
-      onSuccess: (result) => {
-        console.log('Upload successful:', result);
-        showSuccessMessage('File uploaded!');
-      },
-      onError: (error) => {
-        console.error('Upload failed:', error.message);
-        showErrorMessage('Upload failed: ' + error.message);
-      },
-      onFinally: () => {
-        hideUploadModal();
-      },
-    })
-    .send();
-}
-```
+- `client.withConfig(config)` - Create new client with merged config
+- `client.clearCache()` - Clear all cached responses
+- `client.getCacheStats()` - Get cache statistics
+- `client.destroy()` - Clean up resources
