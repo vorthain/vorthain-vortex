@@ -354,6 +354,45 @@ const promise = request.send();
 setTimeout(() => request.cancel('Taking too long'), 5000);
 ```
 
+### Special HTTP Methods
+
+```javascript
+// OPTIONS - Check CORS and allowed methods
+let allowedMethods = '';
+await api
+  .options('users')
+  .settings({
+    responseInterceptor: (response, config) => {
+      allowedMethods = response.headers.get('Allow');
+      console.log('Allowed methods:', allowedMethods);
+      console.log('CORS:', response.headers.get('Access-Control-Allow-Origin'));
+      return response; // Must return the response
+    },
+  })
+  .send()
+  .catch((error) => console.log('OPTIONS failed:', error.status));
+// Returns null for OPTIONS, but headers were captured
+
+// HEAD - Check if resource exists and get metadata
+let lastModified;
+try {
+  await api
+    .head('document')
+    .pathParams({ id: 'abc' })
+    .settings({
+      responseInterceptor: (response, config) => {
+        lastModified = response.headers.get('Last-Modified');
+        console.log('Document size:', response.headers.get('Content-Length'));
+        return response;
+      },
+    })
+    .send();
+  console.log('Document exists, last modified:', lastModified);
+} catch (error) {
+  if (error.status === 404) console.log('Document not found');
+}
+```
+
 ### Response Handling
 
 You can handle responses in multiple ways:
@@ -539,24 +578,41 @@ await api
 
 ### Response Types
 
-Handle different response formats:
+By default, all responses are parsed as JSON. You only need to specify `responseType` for non-JSON content:
 
 ```javascript
-// JSON (default)
-const json = await api.get('data').send();
+// JSON is default - no need to specify
+const users = await api.get('users').send();
+const result = await api.post('data').body({...}).send();
 
-// Plain text
-const html = await api.get('page').settings({ responseType: 'text' }).send();
+// Specify only for non-JSON responses
+const html = await api.get('page')
+  .settings({ responseType: 'text' })
+  .send();
 
-// Binary data as Blob
-const image = await api.get('avatar').settings({ responseType: 'blob' }).send();
+const image = await api.get('avatar')
+  .settings({ responseType: 'blob' })
+  .send();
 // Use: URL.createObjectURL(image)
 
-// Binary data as ArrayBuffer
-const buffer = await api.get('file').settings({ responseType: 'arrayBuffer' }).send();
+const buffer = await api.get('file')
+  .settings({ responseType: 'arrayBuffer' })
+  .send();
 
 // FormData (rare for responses)
-const formData = await api.post('form').settings({ responseType: 'formData' }).send();
+const formData = await api.post('form')
+  .settings({ responseType: 'formData' })
+  .send();
+
+// Set different defaults per endpoint
+const api = createVortexClient({
+  endpoints: {
+    images: {
+      path: '/images/:id',
+      responseType: 'blob' // All image endpoints return blobs
+    }
+  }
+});
 ```
 
 ### Redirect Handling
@@ -768,7 +824,7 @@ results.forEach((result, index) => {
 
 Creates a new client instance.
 
-### `client.get/post/put/patch/delete(endpoint)`
+### `client.get/post/put/patch/delete/head/options(endpoint)`
 
 Create a request builder for the specified endpoint.
 

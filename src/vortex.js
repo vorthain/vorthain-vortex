@@ -527,6 +527,64 @@ export class Vortex {
   }
 
   /**
+   * Creates a HEAD request builder for the specified endpoint.
+   * HEAD requests are identical to GET but return only headers without the response body.
+   * Useful for checking if a resource exists or getting metadata without downloading content.
+   *
+   * @template {keyof TEndpointsConfig} TEndpointName
+   * @param {TEndpointName} endpointName - The name of the endpoint from your configuration
+   * @returns {RequestBuilder} A request builder for chaining configuration
+   * @throws {VortexError} When the endpoint is not found
+   *
+   * @example
+   * // Check if a resource exists
+   * try {
+   *   await client.head('user').pathParams({ id: 123 }).send();
+   *   console.log('User exists');
+   * } catch (error) {
+   *   if (error.status === 404) console.log('User not found');
+   * }
+   *
+   * @example
+   * // Get file size without downloading
+   * const response = await client.head('file').pathParams({ id: 'abc' }).send();
+   * // Response will be null, but you can access headers via interceptors
+   */
+  head(endpointName) {
+    return this._createRequestBuilder('head', endpointName);
+  }
+
+  /**
+   * Creates an OPTIONS request builder for the specified endpoint.
+   * OPTIONS requests are used to determine allowed methods and CORS settings for a resource.
+   * Commonly used for CORS preflight requests in browsers.
+   *
+   * @template {keyof TEndpointsConfig} TEndpointName
+   * @param {TEndpointName} endpointName - The name of the endpoint from your configuration
+   * @returns {RequestBuilder} A request builder for chaining configuration
+   * @throws {VortexError} When the endpoint is not found
+   *
+   * @example
+   * // Check allowed methods for an endpoint
+   * await client.options('users').send();
+   * // Check Allow header in response interceptor
+   *
+   * @example
+   * // CORS preflight check
+   * const response = await client.options('api')
+   *   .settings({
+   *     headers: {
+   *       'Access-Control-Request-Method': 'POST',
+   *       'Access-Control-Request-Headers': 'Content-Type'
+   *     }
+   *   })
+   *   .send();
+   */
+  options(endpointName) {
+    return this._createRequestBuilder('options', endpointName);
+  }
+
+  /**
    * Creates a request builder for the specified method and endpoint.
    * @private
    * @param {string} httpMethod - The HTTP method

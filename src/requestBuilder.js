@@ -886,8 +886,13 @@ export class RequestBuilder {
           throw VortexError.fromResponse(response, errorBody, finalConfig);
         }
 
-        // Handle 204 No Content
-        if (response.status === 204) {
+        // Handle 204 No Content and HEAD requests (which have no body)
+        if (
+          response.status === 204 ||
+          response.status === 205 ||
+          response.status === 304 ||
+          finalConfig.httpMethod === 'HEAD'
+        ) {
           responseData = null;
         } else {
           responseData = await this._parseResponseBody(response, finalConfig.responseType || 'json');
@@ -1142,8 +1147,8 @@ export class RequestBuilder {
             });
           }
 
-          // Handle 204 No Content
-          if (xhr.status === 204) {
+          // Handle 204 No Content and HEAD requests
+          if (xhr.status === 204 || xhr.status === 205 || xhr.status === 304 || config.httpMethod === 'HEAD') {
             resolve(null);
             return;
           }
