@@ -48,6 +48,7 @@
     "src/error.js",
     "src/cache.js",
     "index.js",
+    "index.d.ts",
     "README.md",
     "LICENSE"
   ],
