@@ -418,13 +418,14 @@ try {
     .get('users')
     .settings({
       onStart: () => showLoader(),
-      onFinally: () => hideLoader(),
+      onFinally: () => hideLoader(), // Always runs, even if error is thrown
     })
     .send();
 
   // Main business logic here
   processUsers(users);
 } catch (error) {
+  // hideLoader() has already been called by onFinally
   handleError(error);
 }
 ```
@@ -462,8 +463,15 @@ const api = createVortexClient({
 
   // Transform all errors
   errorMapper: (error) => {
-    // Log errors to monitoring service
-    logToSentry(error);
+    // Add context for debugging
+    error.timestamp = Date.now();
+    error.userId = getCurrentUserId();
+
+    // Send to monitoring service
+    if (typeof window !== 'undefined' && window.trackError) {
+      window.trackError(error);
+    }
+
     return error;
   },
 
@@ -488,6 +496,212 @@ const api = createVortexClient({
       },
     },
   },
+});
+```
+
+### Custom Status Validation
+
+Control which HTTP status codes are considered successful:
+
+```javascript
+const api = createVortexClient({
+  baseURL: 'https://api.example.com',
+
+  // Global: only 2xx is success (default)
+  validateStatus: (status) => status >= 200 && status < 300,
+
+  endpoints: {
+    auth: {
+      path: '/auth',
+      methods: {
+        post: {
+          // Accept 201 and 202 for auth
+          validateStatus: (status) => status === 201 || status === 202,
+        },
+      },
+    },
+    legacy: {
+      path: '/legacy-api',
+      // This old API returns 400 for "no results" - treat as success
+      validateStatus: (status) => status === 200 || status === 400,
+    },
+  },
+});
+
+// Per-request override
+await api
+  .get('users')
+  .settings({
+    validateStatus: (status) => status < 500, // 4xx and below are "success"
+  })
+  .send();
+```
+
+### Response Types
+
+Handle different response formats:
+
+```javascript
+// JSON (default)
+const json = await api.get('data').send();
+
+// Plain text
+const html = await api.get('page').settings({ responseType: 'text' }).send();
+
+// Binary data as Blob
+const image = await api.get('avatar').settings({ responseType: 'blob' }).send();
+// Use: URL.createObjectURL(image)
+
+// Binary data as ArrayBuffer
+const buffer = await api.get('file').settings({ responseType: 'arrayBuffer' }).send();
+
+// FormData (rare for responses)
+const formData = await api.post('form').settings({ responseType: 'formData' }).send();
+```
+
+### Redirect Handling
+
+Control how HTTP redirects are handled:
+
+```javascript
+const api = createVortexClient({
+  baseURL: 'https://api.example.com',
+
+  // Global default
+  redirect: 'follow', // Auto-follow redirects (default)
+
+  endpoints: {
+    auth: {
+      path: '/auth/login',
+      methods: {
+        post: {
+          // Don't follow redirects - get the 3xx response
+          redirect: 'manual',
+          // Must also accept 3xx as valid status
+          validateStatus: (status) => status >= 200 && status < 400,
+        },
+      },
+    },
+    strict: {
+      path: '/strict-api',
+      // Throw error on redirects
+      redirect: 'error',
+    },
+  },
+});
+
+// Handle redirect manually
+const response = await api.post('auth').body({ username, password }).send();
+
+if (response.status === 302) {
+  const redirectUrl = response.headers.get('location');
+  window.location.href = redirectUrl;
+}
+```
+
+### Creating Client Variants
+
+Use `withConfig()` to create modified versions of a client:
+
+```javascript
+const baseApi = createVortexClient({
+  baseURL: 'https://api.example.com',
+  timeout: 30000,
+  headers: {
+    'X-API-Version': '1.0',
+  },
+  endpoints: {
+    users: { path: '/users' },
+    posts: { path: '/posts' },
+  },
+});
+
+// Create authenticated variant
+const authApi = baseApi.withConfig({
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
+
+// Create variant with different timeout
+const fastApi = baseApi.withConfig({
+  timeout: 5000,
+});
+
+// Create variant for different environment
+const stagingApi = baseApi.withConfig({
+  baseURL: 'https://staging-api.example.com',
+});
+
+// Original client unchanged
+await baseApi.get('users').send(); // No auth header
+await authApi.get('users').send(); // Has auth header
+```
+
+### Cache Statistics & Management
+
+Monitor and manage your cache:
+
+```javascript
+const api = createVortexClient({
+  baseURL: 'https://api.example.com',
+  cache: {
+    enabled: true,
+    ttl: 60000,
+  },
+  endpoints: {
+    users: { path: '/users' },
+  },
+});
+
+// Make some requests
+await api.get('users').send();
+await api.get('users').send(); // From cache
+
+// Get cache statistics
+const stats = await api.getCacheStats();
+console.log(stats);
+// {
+//   hits: 1,
+//   misses: 1,
+//   sets: 1,
+//   size: 1,
+//   maxSize: 1000,
+//   hitRate: 0.5
+// }
+
+// Clear specific endpoints or all
+await api.clearCache();
+
+// Clean up when done (important for Node.js apps)
+await api.destroy();
+```
+
+### Cleanup & Resource Management
+
+Properly clean up resources, especially in Node.js applications:
+
+```javascript
+const api = createVortexClient({
+  baseURL: 'https://api.example.com',
+  cache: { enabled: true },
+  endpoints: {
+    users: { path: '/users' },
+  },
+});
+
+try {
+  // Use the client
+  await api.get('users').send();
+} finally {
+  // Clean up timers, cache, and pending requests
+  await api.destroy();
+}
+
+// In a Node.js server
+process.on('SIGTERM', async () => {
+  await api.destroy();
+  process.exit(0);
 });
 ```
 
