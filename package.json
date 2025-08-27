@@ -42,6 +42,7 @@
     "nodejs",
     "isomorphic"
   ],
+  "types": "./index.d.ts",
   "files": [
     "src/vortex.js",
     "src/requestBuilder.js",
